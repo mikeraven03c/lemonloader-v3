@@ -1,0 +1,21 @@
+<html>
+  <head>
+    <style>
+      body {
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div>Hello World</div>
+    <script src="../../../request.js"></script>
+    <script>
+      const { request } = createRequest('quasar');
+      setTimeout(async () => {
+        // console.log('hello');
+        const data = await request('init', { test: 'test' });
+        console.log(data);
+      }, 2000);
+    </script>
+  </body>
+</html>

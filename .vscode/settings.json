@@ -1,5 +1,5 @@
 {
-    "liveServer.settings.port": 5502,
-    "prettier.singleQuote": true,
-    "prettier.jsxSingleQuote": true
+  "liveServer.settings.port": 5503,
+  "prettier.singleQuote": true,
+  "prettier.jsxSingleQuote": true
 }

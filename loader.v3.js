@@ -1,28 +1,43 @@
 /**
  * @typedef {object} ExportsDef
  * @property {object} classes
+ * @property {object} namespace
  * @property {object} service
+ * @property {object} app
+ * @property {object} routes
+ * @property {object} search
+ * @property {string} search.app
+ * @property {string} search.route
  */
 class LoaderV3 {
   registerScript;
-  RegisterClass;
-  /** @type {object.<String, Function[]>} */
-  lifecycle = {
-    autoload: [],
-  };
-
-  constant = {
-    AUTOLOAD: 'autoload',
-  };
+  registerClass;
+  registerProvider;
 
   exports = {
+    namespace: {},
     classes: {},
     service: {},
+    app: {},
+    routes: {},
+    search: {
+      app: undefined,
+      route: undefined,
+    },
   };
 
   event = {
     autoload: () => {
-      this.triggerEvent('autoload');
+      this.registerScript.loadScripts();
+    },
+    boot: () => {
+      this.registerProvider.instanceService();
+      this.registerProvider.onRegister();
+
+      this.registerProvider.onBoot();
+    },
+    dispatch: () => {
+      this.router.onDispatch();
     },
   };
 
@@ -30,14 +45,19 @@ class LoaderV3 {
     const config = __loaderConfiguration(this.exports);
     this.registerScript = new config.RegisterSript();
     this.registerClass = new config.RegisterClass();
+    this.registerProvider = new config.RegisterServiceProvider();
+    this.router = new config.Router();
 
-    this.setup();
+    const searchParams = new URLSearchParams(window.location.search);
+    this.exports.search.app = searchParams.get('app');
+    this.exports.search.route = searchParams.get('route');
   }
 
   /**
    *
    * @param {string} eventName
    * @param {function} callback
+   * @deprecated
    */
   addEvent(eventName, callback) {
     this.lifecycle[eventName].push(callback);
@@ -46,15 +66,10 @@ class LoaderV3 {
   /**
    *
    * @param {string} eventName
+   * @deprecated
    */
   triggerEvent(eventName) {
     this.lifecycle[eventName].forEach((e) => e());
-  }
-
-  setup() {
-    this.addEvent(this.constant.AUTOLOAD, () => {
-      this.registerScript.loadScripts();
-    });
   }
 }
 
@@ -70,11 +85,13 @@ function __loaderConfiguration(exports) {
 
   class ScriptData {
     /** @type {string} */ src;
+    /** @type {string} */ filename;
 
     /** @type {Boolean} */ isRegister;
 
     constructor(src, isRegister = true) {
       this.src = src;
+      this.filename = src.split('/').pop().split('.')[0];
       this.isRegister = isRegister;
     }
   }
@@ -114,11 +131,14 @@ function __loaderConfiguration(exports) {
 
     loadScripts() {
       this.scripts.forEach((e) => {
-        if (!e.isRegister) {
-          return;
+        const searchApp = exports.search.app;
+        if (
+          e.isRegister ||
+          (searchApp != undefined && searchApp == e.filename)
+        ) {
+          const script = this.createScript(e.src);
+          this.append(script);
         }
-        const script = this.createScript(e.src);
-        this.append(script);
       });
     }
 
@@ -127,7 +147,6 @@ function __loaderConfiguration(exports) {
      * @param {function(RegisterSript) : void} actions
      */
     setup(actions) {
-      console.log(this);
       actions(this);
     }
   }
@@ -159,7 +178,7 @@ function __loaderConfiguration(exports) {
           }
 
           return classObj[current];
-        }, exports.classes);
+        }, exports.namespace);
       };
     }
 
@@ -178,8 +197,25 @@ function __loaderConfiguration(exports) {
   }
 
   class ProviderData {
-    /** @type {String} */ name;
+    /** @type {String} */ fullPath;
+    /** @type {String} */ namespace;
+    /** @type {String} */ className;
     /** @type {ObjectConstructor} */ classObj;
+    /**
+     *
+     * @param {string} namespace
+     * @param {string} className
+     * @param {ObjectConstructor} classVal
+     * @returns
+     */
+    static from(namespace, className, classObj) {
+      const providerData = new ProviderData();
+      providerData.fullPath = namespace.concat(`.${className}`);
+      providerData.classObj = classObj;
+      providerData.className = className;
+      providerData.namespace = namespace;
+      return providerData;
+    }
   }
 
   class RegisterServiceProvider {
@@ -189,35 +225,126 @@ function __loaderConfiguration(exports) {
     /** @type {ObjectConstructor} */
     registeredProvider = [];
 
+    /** @type {string[]} */
+    providerList = [];
+
     constructor() {
-      this.defineProvider = (name, classObj) => {
-        const providerData = new ProviderData();
-        providerData.name = name;
-        providerData.classObj = classObj;
-        this.providers.push(providerData);
+      /**
+       *
+       * @param {string} namespace
+       * @param {function(object): void} classesFn
+       */
+      this.defineProvider = (namespace, classesFn) => {
+        const providerClasses = this.#getProvider(classesFn);
+
+        providerClasses.forEach((e) => {
+          const [className, classVal] = e;
+
+          this.providers.push(
+            ProviderData.from(namespace, className, classVal)
+          );
+        });
+        // providerData.name = namespace;
+        // // providerData.classObj = classObj;
       };
     }
 
-    setup() {
+    /**
+     * @param {function(obj)} action
+     * @returns {Array<[string, Object]>}
+     */
+    #getProvider(action) {
+      /** @type {object.<string, function>} */
+      const classObj = {};
+
+      action(classObj);
+
+      return Object.entries(classObj);
+    }
+
+    /**
+     *
+     * @param {string[]} providerList
+     */
+    register(providerList) {
+      this.providerList = this.providerList.concat(providerList);
+    }
+
+    /**
+     *
+     * @param {function(RegisterServiceProvider) : void} action
+     */
+    setup(action) {
+      action(this);
+
+      return this;
+    }
+
+    instanceService() {
+      const hasList = this.providerList.length > 0;
+
       this.providers.forEach((e) => {
-        this.registeredProvider.push(new e.classObj());
+        if (!hasList || this.providerList.includes(e.fullPath)) {
+          this.registeredProvider.push(new e.classObj());
+        }
       });
     }
 
-    register() {
+    onRegister() {
       this.registeredProvider.forEach((e) => {
         if ('register' in e) {
-          e.register();
+          e.register(exports);
         }
       });
     }
 
-    boot() {
+    onBoot() {
       this.registeredProvider.forEach((e) => {
         if ('boot' in e) {
-          e.boot();
+          e.boot(exports);
         }
       });
+    }
+  }
+
+  class Router {
+    onDispatch() {
+      const route = exports.search.route;
+
+      if (route != undefined) {
+        if (route in exports.routes) {
+          const { namespace, fn } = exports.routes[route];
+          this.instanceClass(namespace, fn);
+        } else {
+          throw Error('Can not found routes');
+        }
+      }
+    }
+
+    /**
+     *
+     * @param {string} namespace
+     * @returns
+     */
+    getClassFromNamespace(namespace) {
+      const classObj = namespace.split('.').reduce((previous, current) => {
+        return previous[current];
+      }, exports.namespace);
+
+      return classObj;
+    }
+
+    /**
+     *
+     * @param {string} namespace
+     * @param {string} fn
+     * @returns {ObjectConstructor}
+     */
+    instanceClass(namespace, fn) {
+      const classObj = this.getClassFromNamespace(namespace);
+      const instance = new classObj();
+      instance[fn](exports);
+      return instance;
     }
   }
 
@@ -230,5 +357,6 @@ function __loaderConfiguration(exports) {
     RegisterSript,
     RegisterClass,
     RegisterServiceProvider,
+    Router,
   };
 }
