@@ -244,8 +244,6 @@ function __loaderConfiguration(exports) {
             ProviderData.from(namespace, className, classVal)
           );
         });
-        // providerData.name = namespace;
-        // // providerData.classObj = classObj;
       };
     }
 
@@ -283,11 +281,23 @@ function __loaderConfiguration(exports) {
     instanceService() {
       const hasList = this.providerList.length > 0;
 
-      this.providers.forEach((e) => {
-        if (!hasList || this.providerList.includes(e.fullPath)) {
-          this.registeredProvider.push(new e.classObj());
-        }
-      });
+      if (!hasList) {
+        this.providers.forEach((e) => {
+          if (this.providerList.includes(e.fullPath)) {
+            this.registeredProvider.push(new e.classObj());
+          }
+        });
+      } else {
+        this.providerList.forEach((e) => {
+          const provider = this.providers.find(
+            (provider) => provider.fullPath == e
+          );
+
+          if (provider) {
+            this.registeredProvider.push(new provider.classObj());
+          }
+        });
+      }
     }
 
     onRegister() {

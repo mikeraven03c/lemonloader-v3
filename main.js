@@ -3,7 +3,6 @@ const loader = new LoaderV3();
 const registerScript = loader.registerScript;
 registerScript.setup((action) => {
   // System Script
-  action.add('src/system/development.js');
   action.add('src/system/route.js');
   action.add('src/system/dependency.js');
   action.add('src/system/element.js');
