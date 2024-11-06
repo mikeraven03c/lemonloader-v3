@@ -1,6 +1,7 @@
 const loader = new LoaderV3();
 
 const registerScript = loader.registerScript;
+
 registerScript.setup((action) => {
   // System Script
   action.add('src/system/route.js');
@@ -16,6 +17,7 @@ registerScript.setup((action) => {
 
   // Module
   action.add('src/modules/quasar/quasar.js', false);
+  action.add('src/modules/react/moduleReact.js', true);
 });
 
 const { defineClass } = loader.registerClass;
